@@ -44,7 +44,6 @@ void setup() {
   	M5.begin();
 	Serial.begin(9600);
 	M5.Lcd.fillScreen(BLACK);
-	M5.Lcd.setTextSize(3);
 	// IMU
 	M5.IMU.Init();
 	delay(500);  
@@ -91,21 +90,25 @@ void loop() {
 		tick = 0;
 	}
 
-	readGyro();
-	applyCalibration();
-	float dt = (micros() - lastMs) / 1000000.0;
-	lastMs = micros();
-	float roll = getRoll();
-	float pitch = getPitch();
-	
-	kalAngleX = kalmanX.getAngle(roll, gyro[0], dt);
-	kalAngleY = kalmanY.getAngle(pitch, gyro[1], dt);
 	//20回に1回だけ描画
 	tick++;
-	drawAngleIndicator(kalAngleY);
-	if(tick % 20 == 0){
+	if(tick % 10 == 0){
+
+		// 左右の傾きを取得
+		readGyro();
+		applyCalibration();
+		float dt = (micros() - lastMs) / 1000000.0;
+		lastMs = micros();
+		float roll = getRoll();
+		float pitch = getPitch();
+		
+		kalAngleX = kalmanX.getAngle(roll, gyro[0], dt);
+		kalAngleY = kalmanY.getAngle(pitch, gyro[1], dt);
+
+		// 左右の傾きをディスプレイ表示
 		drawMaxLean();
-		drawThrottleAngle();
+		drawAngleIndicator(kalAngleY);
+		// drawThrottleAngle();
 	}
 	
 }
@@ -123,7 +126,7 @@ bool drawAngleIndicator(float kalAngleY)
 	float magnification = 0.375;		// 角度60をMAXとしたときの倍率
 
 	// インジケータリセット
-	if (tick % 20 == 0){
+	if (tick % 10 == 0){
 		for (uint8_t i = 0; i < lineBold; i++)
 		{
 			M5.Lcd.drawLine(0, 200+i, 320, 200+i,  BLACK);
@@ -169,6 +172,11 @@ bool drawAngleIndicator(float kalAngleY)
 			maxLeftLean = std::abs(kalAngleY);
 		}
 	}
+
+	M5.Lcd.setTextSize(4);
+	M5.Lcd.setCursor(140, 100);
+	std::string strKalAngle = std::to_string(static_cast<int16_t>(std::abs(kalAngleY)));
+	M5.Lcd.printf(strKalAngle.c_str());
 
 	return true;
 }
@@ -236,5 +244,14 @@ float getPitch(){
 // CANData
 bool drawThrottleAngle()
 {
+	M5.Lcd.setTextSize(2);
+	M5.Lcd.setCursor(20, 60);
+	std::string throttle = "Throttle:";
+	M5.Lcd.printf(throttle.c_str());
+
+	M5.Lcd.setTextSize(3);
+	M5.Lcd.setCursor(140, 55);
+	std::string throttleAngle = "120";
+	M5.Lcd.printf(throttleAngle.c_str());
 	return true;
 }
