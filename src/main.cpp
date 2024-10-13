@@ -5,6 +5,17 @@
 #include <cmath>
 #include <BluetoothSerial.h>
  
+
+ enum class DisplayType
+{
+	Lean,
+	CAN
+};
+
+
+// 機能切り替え
+DisplayType enmDisplayType = DisplayType::Lean;
+bool blneedFillBlack = false;
 // IMU
 //x, y, zの順
 float acc[3];
@@ -57,6 +68,80 @@ void setup() {
 }
 
 void loop() {
+	
+	// ボタンによって表示内容を切り分ける
+	M5.update();
+	if (M5.BtnA.wasPressed())
+	{
+		enmDisplayType = DisplayType::Lean;
+		blneedFillBlack = true;
+	} 
+	else if(M5.BtnB.wasPressed())
+	{
+		enmDisplayType = DisplayType::CAN;
+		blneedFillBlack = true;
+	}
+	else{
+		// 何もしない
+	}
+
+	// 機能を切り替える場合、前機能の画面をリセットする必要がある
+	// リセットのフラグが立っている場合、画面を黒で塗りつぶす
+	if (blneedFillBlack)
+	{
+		M5.Lcd.fillScreen(BLACK);
+		blneedFillBlack = false;
+	}
+	else
+	{
+		// 何もしない
+	}
+
+	// 機能ごとに処理を分ける
+	switch (enmDisplayType)
+	{
+		case DisplayType::Lean:		// 傾きを表示する
+
+			{
+				if (2000000000 < tick)
+				{ 
+					tick = 0;
+				}
+
+				//20回に1回だけ描画
+				tick++;
+				if(tick % 10 == 0){
+
+					// 左右の傾きを取得
+					readGyro();
+					applyCalibration();
+					float dt = (micros() - lastMs) / 1000000.0;
+					lastMs = micros();
+					float roll = getRoll();
+					float pitch = getPitch();
+					
+					kalAngleX = kalmanX.getAngle(roll, gyro[0], dt);
+					kalAngleY = kalmanY.getAngle(pitch, gyro[1], dt);
+
+					// 左右の傾きをディスプレイ表示
+					drawMaxLean();
+					drawAngleIndicator(kalAngleY);
+					// drawThrottleAngle();
+				}
+			}
+			break;
+		case DisplayType::CAN:
+			{
+				M5.Lcd.setTextSize(4);
+				M5.Lcd.setCursor(140, 100);
+				std::string disptype = "this displaytype is CAN.";
+				M5.Lcd.printf(disptype.c_str());
+			}
+			break;
+		default:
+			break;
+	}
+
 	// slave(M5StickC)へ接続
 	// if (tick % 100 == 0)
 	// {
@@ -82,34 +167,6 @@ void loop() {
 	// 	}
 	// }
 
-
-
-
-	if (2000000000 < tick)
-	{ 
-		tick = 0;
-	}
-
-	//20回に1回だけ描画
-	tick++;
-	if(tick % 10 == 0){
-
-		// 左右の傾きを取得
-		readGyro();
-		applyCalibration();
-		float dt = (micros() - lastMs) / 1000000.0;
-		lastMs = micros();
-		float roll = getRoll();
-		float pitch = getPitch();
-		
-		kalAngleX = kalmanX.getAngle(roll, gyro[0], dt);
-		kalAngleY = kalmanY.getAngle(pitch, gyro[1], dt);
-
-		// 左右の傾きをディスプレイ表示
-		drawMaxLean();
-		drawAngleIndicator(kalAngleY);
-		// drawThrottleAngle();
-	}
 	
 }
 
