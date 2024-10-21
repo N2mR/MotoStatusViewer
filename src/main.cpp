@@ -4,7 +4,8 @@
 #include <cstdint>
 #include <cmath>
 #include <BluetoothSerial.h>
- 
+#include <sstream>
+#include <../.pio/libdeps/m5stack-core2/ArduinoJson/ArduinoJson.h>
 
  enum class DisplayType
 {
@@ -27,7 +28,7 @@ float kalAngleY;
 Kalman kalmanX;
 Kalman kalmanY;
 long lastMs = 0;
-long tick = 0;
+uint16_t tick = 0;
 uint8_t maxRightLean = 0;
 uint8_t maxLeftLean = 0;
 // Bluetooth
@@ -62,13 +63,23 @@ void setup() {
 	readGyro();
 	kalmanX.setAngle(getRoll());
 	kalmanY.setAngle(getPitch());
+
+	// バイクに取り付けるため振動に考慮
+	kalmanX.setQangle(0.003);
+	kalmanX.setQbias(0.005);
+	kalmanX.setRmeasure(0.05);
+
+	kalmanY.setQangle(0.003);
+	kalmanY.setQbias(0.005);
+	kalmanY.setRmeasure(0.05);
+
 	lastMs = micros();
 	// Bluetooth
 	SerialBT.begin(strMasterName, true);
 }
 
 void loop() {
-	
+	tick++;
 	// ボタンによって表示内容を切り分ける
 	M5.update();
 	if (M5.BtnA.wasPressed())
@@ -103,13 +114,7 @@ void loop() {
 		case DisplayType::Lean:		// 傾きを表示する
 
 			{
-				if (2000000000 < tick)
-				{ 
-					tick = 0;
-				}
-
-				//20回に1回だけ描画
-				tick++;
+				//10回に1回だけ描画
 				if(tick % 10 == 0){
 
 					// 左右の傾きを取得
@@ -126,48 +131,72 @@ void loop() {
 					// 左右の傾きをディスプレイ表示
 					drawMaxLean();
 					drawAngleIndicator(kalAngleY);
-					// drawThrottleAngle();
+
 				}
 			}
 			break;
 		case DisplayType::CAN:
 			{
-				M5.Lcd.setTextSize(4);
-				M5.Lcd.setCursor(140, 100);
-				std::string disptype = "this displaytype is CAN.";
-				M5.Lcd.printf(disptype.c_str());
+				// slave(M5StickC)へ接続
+				if (!blConnect)
+				{
+					if (tick % 100 == 0)
+					{
+						blConnect = SerialBT.connect(strSlaveName);
+						if (blConnect)
+						{
+							M5.Lcd.fillScreen(BLACK);
+						}
+						else
+						{
+							M5.Lcd.fillScreen(BLACK);
+							M5.Lcd.setTextSize(2);
+							M5.Lcd.setCursor(50, 20);
+							M5.Lcd.printf("Not Connected.");
+						}
+					}
+				}
+
+				if (SerialBT.available())
+				{
+					std::string recv = "";
+					while (SerialBT.available())
+					{
+						recv += (char)SerialBT.read();
+					}
+					
+					char delm = ' ';
+
+					const char* charRecv = recv.c_str();
+
+					StaticJsonDocument<200> doc;
+					deserializeJson(doc, charRecv);
+
+					const char* rpm = doc["rpm"];
+					const char* throttle = doc["throttle"];
+
+					String RPM = "RPM: ";
+					String Throttle = "Throttle: ";
+					M5.Lcd.setTextSize(2);
+					M5.Lcd.setCursor(50, 70);
+					M5.Lcd.println(RPM);
+					M5.Lcd.setCursor(50, 140);
+					M5.Lcd.println(Throttle);
+
+					M5.Lcd.setTextSize(3);
+					M5.Lcd.setCursor(140, 65);
+					M5.Lcd.fillRect(140, 65, 100, 25, BLACK);
+					M5.Lcd.println(String(rpm));
+					M5.Lcd.setCursor(180, 135);
+					M5.Lcd.fillRect(180, 135, 100, 25, BLACK);
+					M5.Lcd.println(String(throttle));
+
+				}
 			}
 			break;
 		default:
 			break;
 	}
-
-	// slave(M5StickC)へ接続
-	// if (tick % 100 == 0)
-	// {
-	// 	M5.Lcd.setTextSize(2);
-	// 	M5.Lcd.setCursor(10, 10);
-
-
-	// 	// Connectedにならないと画面がつかない
-	// 	if (!blConnect)
-	// 	{
-	// 		blConnect = SerialBT.connect(strSlaveName);
-	// 		if (blConnect)
-	// 		{
-	// 			M5.Lcd.printf("Connected.");
-	// 		}
-	// 	}
-
-	// 	// 接続できていない場合
-	// 	if (!blConnect)
-	// 	{
-	// 		M5.Lcd.fillScreen(BLACK);
-	// 		M5.Lcd.printf("Not Connected.");
-	// 	}
-	// }
-
-	
 }
 
 /*
@@ -232,6 +261,7 @@ bool drawAngleIndicator(float kalAngleY)
 
 	M5.Lcd.setTextSize(4);
 	M5.Lcd.setCursor(140, 100);
+	M5.Lcd.fillRect(130, 90, 90, 40, BLACK);
 	std::string strKalAngle = std::to_string(static_cast<int16_t>(std::abs(kalAngleY)));
 	M5.Lcd.printf(strKalAngle.c_str());
 
